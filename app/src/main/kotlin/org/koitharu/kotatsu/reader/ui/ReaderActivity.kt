@@ -513,31 +513,10 @@ class ReaderActivity :
         return controlDelegate.onKeyUp(keyCode, event) || super.onKeyUp(keyCode, event)
     }
 
-        override fun onChapterSelected(chapter: MangaChapter): Boolean {
-        // Intercept and hand over image rendering to Chika's panel reader engine
-        try {
-            val intent = Intent(this, Class.forName("batunii.chika.ui.reader.ReaderActivity")).apply {
-                // Pass the unique chapter structural identification parameters
-                putExtra("CHAPTER_ID", chapter.id)
-                
-                // Kotatsu structures downloaded manga directories cleanly.
-                // If the folder is saved locally, Chika can read the page path directly.
-                chapter.path?.let { localPath ->
-                    putExtra("CHAPTER_PATH", localPath)
-                }
-            }
-            startActivity(intent)
-            
-            // Finish this parent activity execution layout.
-            // This ensures that when the user presses back out of Chika, they return directly to Kotatsu's library interface.
-            finish() 
-        } catch (e: Exception) {
-            // Safe fallback layout routing: if Chika fails to load, drop back to native DropSauce rendering
-            jumpToChapter(chapter.id, page = 0, scroll = 0, isPeekPreferred = false)
-        }
+    override fun onChapterSelected(chapter: MangaChapter): Boolean {
+        jumpToChapter(chapter.id, page = 0, scroll = 0, isPeekPreferred = false)
         return true
     }
-
 
     override fun onBookmarkSelected(bookmark: Bookmark): Boolean {
         return if (bookmark.epubHighlight != null) {
@@ -1005,4 +984,4 @@ class ReaderActivity :
 
         private const val TOP_READER_BAR_ALPHA = 0.7f
     }
-}
+	}
