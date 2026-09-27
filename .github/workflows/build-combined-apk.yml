@@ -1,7 +1,7 @@
 name: Build Combined DropSauce & Chika APK
 
 on:
-  workflow_dispatch: # Allows you to manually click a button to build the app
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,16 +14,40 @@ jobs:
     - name: Clone Chika Repository
       run: |
         git clone https://github.com chika-src
-        # Copy Chika's viewer layout files directly into DropSauce's source tree
-        # Note: Paths below are conceptual and must match actual package structures
-        mkdir -p app/src/main/java/com/dropsauce/app/chika
-        cp -r chika-src/app/src/main/java/* app/src/main/java/com/dropsauce/app/chika/ || true
-        cp -r chika-src/app/src/main/res/* app/src/main/res/ || true
+        
+        # 1. Create a dedicated feature module inside DropSauce for Chika
+        mkdir -p chika-reader/src/main/java/batunii/chika
+        mkdir -p chika-reader/src/main/assets
+        mkdir -p chika-reader/src/main/res
+        
+        # 2. Copy the Android-specific app source and assets (including TFLite models)
+        cp -r chika-src/app/src/main/java/* chika-reader/src/main/java/batunii/chika/ || true
+        cp -r chika-src/app/src/main/assets/* chika-reader/src/main/assets/ || true
+        cp -r chika-src/app/src/main/res/* chika-reader/src/main/res/ || true
+        
+        # 3. Copy Chika's Kotlin Multiplatform core layer into the module
+        cp -r chika-src/shared/src/commonMain/kotlin/* chika-reader/src/main/java/ || true
 
-    - name: Set up JDK 17
+    - name: Inject Chika Module into Project Structural Files
+      run: |
+        # Append Chika module to settings.gradle
+        if [ -f settings.gradle.kts ]; then
+          echo 'include(":chika-reader")' >> settings.gradle.kts
+        else
+          echo "include ':chika-reader'" >> settings.gradle
+        fi
+        
+        # Inject Chika dependency directly into DropSauce's app build file
+        if [ -f app/build.gradle.kts ]; then
+          sed -i '/dependencies {/a \    implementation(project(":chika-reader"))' app/build.gradle.kts
+        else
+          sed -i '/dependencies {/a \    implementation project(":chika-reader")' app/build.gradle
+        fi
+
+    - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: '21'
         distribution: 'temurin'
         cache: gradle
 
@@ -31,7 +55,7 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build Android Debug APK
-      run: ./gradlew assembleDebug
+      run: ./gradlew :app:assembleDebug
 
     - name: Upload Finished APK
       uses: actions/upload-artifact@v4
