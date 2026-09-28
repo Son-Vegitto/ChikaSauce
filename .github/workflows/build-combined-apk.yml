@@ -40,10 +40,11 @@ jobs:
 
     - name: Create Chika Reader Module Build Configurations
       run: |
-        # Generates a valid Android Library build configuration file matching DropSauce's compilation traits
+        # Generates a valid Android Library build configuration file matching DropSauce's Kotlin 2.0 traits
         cat << 'EOF' > chika-reader/build.gradle
         plugins {
             id 'com.android.library'
+            id 'org.jetbrains.kotlin.plugin.compose'
         }
 
         android {
@@ -67,9 +68,6 @@ jobs:
             }
             buildFeatures {
                 compose true
-            }
-            composeOptions {
-                kotlinCompilerExtensionVersion '1.5.8'
             }
         }
 
