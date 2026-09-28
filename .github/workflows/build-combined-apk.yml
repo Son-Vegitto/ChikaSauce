@@ -30,6 +30,12 @@ jobs:
         # 4. Pull ALL Shared Common Math & Logic Engines recursively
         cp -r chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/* chika-reader/src/main/java/com/chakra/comicreader/ || true
 
+        # 5. Clean up local database frameworks to bypass ComicReaderApp references
+        rm -rf chika-reader/src/main/java/com/chakra/comicreader/data/db
+        rm -f chika-reader/src/main/java/com/chakra/comicreader/data/library/LibraryRepository.kt
+        rm -f chika-reader/src/main/java/com/chakra/comicreader/ComicReaderApp.kt
+        rm -f chika-reader/src/main/java/com/chakra/comicreader/MainActivity.kt
+
     - name: Create Chika Reader Module Build Configurations
       run: |
         cat << 'EOF' > chika-reader/build.gradle
@@ -75,9 +81,15 @@ jobs:
             implementation 'androidx.compose.ui:ui-graphics'
             implementation 'androidx.compose.ui:ui-tooling-preview'
             implementation 'androidx.compose.material3:material3'
-            
-            // Material Extended Icons used by Chika UI
             implementation 'androidx.compose.material:material-icons-extended'
+
+            // Jetpack Navigation Engine
+            implementation 'androidx.navigation:navigation-compose:2.7.7'
+            
+            // Archive Decoders (7-Zip & Apache Commons Compress)
+            implementation 'net.sf.sevenzipjbinding:sevenzipjbinding:16.02-2.01'
+            implementation 'net.sf.sevenzipjbinding:sevenzipjbinding-all-platforms:16.02-2.01'
+            implementation 'org.apache.commons:commons-compress:1.26.0'
             
             // On-device machine learning processing
             implementation 'org.tensorflow:tensorflow-lite:2.14.0'
@@ -95,7 +107,6 @@ jobs:
         import androidx.activity.ComponentActivity
         import androidx.activity.compose.setContent
         import androidx.lifecycle.viewmodel.compose.viewModel
-        import com.chakra.comicreader.ui.theme.ChikaTheme
 
         class ChikaReaderActivity : ComponentActivity() {
             override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,14 +114,11 @@ jobs:
                 val chapterPath = intent.getStringExtra("CHAPTER_PATH") ?: ""
 
                 setContent {
-                    ChikaTheme {
-                        val readerViewModel: ReaderViewModel = viewModel()
-                        // Match Chika's exact constructor requirements
-                        ReaderScreen(
-                            viewModel = readerViewModel,
-                            onBack = { finish() }
-                        )
-                    }
+                    val readerViewModel: ReaderViewModel = viewModel()
+                    ReaderScreen(
+                        viewModel = readerViewModel,
+                        onBack = { finish() }
+                    )
                 }
             }
         }
