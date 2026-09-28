@@ -124,11 +124,11 @@ jobs:
         # 2. Add dependency hook to DropSauce app architecture
         sed -i '/dependencies {/a \    implementation project(":chika-reader")' app/build.gradle
 
-        # 3. Clean injection matching the exact closing application block of your manifest file tree
+        # 3. Clean injection matching the exact closing application block using pipe dividers to avoid clash
         TARGET_MANIFEST="app/src/main/AndroidManifest.xml"
         if [ -f "$TARGET_MANIFEST" ]; then
-          CHIKA_ACTIVITY_XML='        <activity android:name="com.chakra.comicreader.ui.reader.ChikaReaderActivity" android:exported="false" android:theme="@style/Theme.AppCompat.NoActionBar" />\n    <\/application>'
-          sed -i "s/<\/application>/$CHIKA_ACTIVITY_XML/g" "$TARGET_MANIFEST"
+          CHIKA_ACTIVITY_XML='        <activity android:name="com.chakra.comicreader.ui.reader.ChikaReaderActivity" android:exported="false" android:theme="@style/Theme.AppCompat.NoActionBar" />\n    </application>'
+          sed -i "s|</application>|$CHIKA_ACTIVITY_XML|g" "$TARGET_MANIFEST"
         fi
 
     - name: Set up JDK 21
