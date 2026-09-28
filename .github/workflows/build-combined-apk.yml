@@ -11,30 +11,32 @@ jobs:
     - name: Checkout DropSauce (Base Project)
       uses: actions/checkout@v4
 
-    - name: Clone Chika Repository and Isolate Reader Modules
+    - name: Clone Chika Repository and Extract Core ML Math Modules
       run: |
         git clone https://github.com/batunii/chika chika-src
         
-        # 1. Initialize complete module directory layout
-        mkdir -p chika-reader/src/main/java/com/chakra/comicreader
+        # 1. Initialize empty isolated module layout
+        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/data/archive
+        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/detection
+        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/ui/reader
         mkdir -p chika-reader/src/main/assets
-        mkdir -p chika-reader/src/main/res
         
-        # 2. Extract AI Panel Tracking Assets & Custom Typography
+        # 2. Extract AI Panel Tracking Weights File
         cp chika-src/app/src/main/assets/manga_panel_detector_int8.tflite chika-reader/src/main/assets/
-        cp -r chika-src/app/src/main/res/* chika-reader/src/main/res/ || true
         
-        # 3. Pull ALL Chika App Source Files recursively to avoid missing references
-        cp -r chika-src/app/src/main/java/com/chakra/comicreader/* chika-reader/src/main/java/com/chakra/comicreader/ || true
+        # 3. Pull Core Logic, YOLO Math Models, and Viewport Canvas Math Files
+        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/detection/*.kt chika-reader/src/main/java/com/chakra/comicreader/detection/
+        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/ui/reader/CameraTransform.kt chika-reader/src/main/java/com/chakra/comicreader/ui/reader/
+        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/data/archive/ComicArchive.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
+        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/data/archive/ComicFormatDetector.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
+        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/data/archive/NaturalOrder.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
         
-        # 4. Pull ALL Shared Common Math & Logic Engines recursively
-        cp -r chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/* chika-reader/src/main/java/com/chakra/comicreader/ || true
-
-        # 5. Clean up local database frameworks to bypass ComicReaderApp references
-        rm -rf chika-reader/src/main/java/com/chakra/comicreader/data/db
-        rm -f chika-reader/src/main/java/com/chakra/comicreader/data/library/LibraryRepository.kt
-        rm -f chika-reader/src/main/java/com/chakra/comicreader/ComicReaderApp.kt
-        rm -f chika-reader/src/main/java/com/chakra/comicreader/MainActivity.kt
+        # 4. Pull Android-Specific TensorFlow Driver Wrappers
+        cp chika-src/app/src/main/java/com/chakra/comicreader/detection/MlPanelDetector.kt chika-reader/src/main/java/com/chakra/comicreader/detection/
+        cp chika-src/app/src/main/java/com/chakra/comicreader/detection/PanelSource.kt chika-reader/src/main/java/com/chakra/comicreader/detection/
+        cp chika-src/app/src/main/java/com/chakra/comicreader/data/archive/ComicArchiveFactory.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
+        cp chika-src/app/src/main/java/com/chakra/comicreader/data/archive/ZipComicArchive.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
+        cp chika-src/app/src/main/java/com/chakra/comicreader/data/archive/RarComicArchive.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
 
     - name: Create Chika Reader Module Build Configurations
       run: |
@@ -72,67 +74,36 @@ jobs:
             implementation 'androidx.core:core-ktx:1.12.0'
             implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
             implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0'
-            implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.7.0'
             implementation 'androidx.activity:activity-compose:1.8.2'
             
-            // Jetpack Compose Architecture
+            // Jetpack Compose Layers
             implementation platform('androidx.compose:compose-bom:2024.02.00')
             implementation 'androidx.compose.ui:ui'
             implementation 'androidx.compose.ui:ui-graphics'
-            implementation 'androidx.compose.ui:ui-tooling-preview'
             implementation 'androidx.compose.material3:material3'
             implementation 'androidx.compose.material:material-icons-extended'
-
-            // Jetpack Navigation Engine
-            implementation 'androidx.navigation:navigation-compose:2.7.7'
             
-            // Archive Decoders (7-Zip & Apache Commons Compress)
+            // Archive decoders
             implementation 'net.sf.sevenzipjbinding:sevenzipjbinding:16.02-2.01'
             implementation 'net.sf.sevenzipjbinding:sevenzipjbinding-all-platforms:16.02-2.01'
             implementation 'org.apache.commons:commons-compress:1.26.0'
             
-            // On-device machine learning processing
+            // TensorFlow Lite Machine Learning Packages
             implementation 'org.tensorflow:tensorflow-lite:2.14.0'
             implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
         }
         EOF
 
-    - name: Inject Chika Reader Activity Wrapper
+    - name: Inject Chika Self-Contained Reader Activity Engine
       run: |
-        # Creates a traditional Android Activity entry bridge that cleanly matches Chika's inner parameters
-        cat << 'EOF' > chika-reader/src/main/java/com/chakra/comicreader/ui/reader/ChikaReaderActivity.kt
-        package com.chakra.comicreader.ui.reader
-
-        import android.os.Bundle
-        import androidx.activity.ComponentActivity
-        import androidx.activity.compose.setContent
-        import androidx.lifecycle.viewmodel.compose.viewModel
-
-        class ChikaReaderActivity : ComponentActivity() {
-            override fun onCreate(savedInstanceState: Bundle?) {
-                super.onCreate(savedInstanceState)
-                val chapterPath = intent.getStringExtra("CHAPTER_PATH") ?: ""
-
-                setContent {
-                    val readerViewModel: ReaderViewModel = viewModel()
-                    ReaderScreen(
-                        viewModel = readerViewModel,
-                        onBack = { finish() }
-                    )
-                }
-            }
-        }
-        EOF
+        # Handled in Part 2 text array block
+        echo "Injecting target activity payload on next automation block"
 
     - name: Inject Chika Module and Register Android Manifest
       run: |
-        # 1. Append module using clean strings
         echo "include ':chika-reader'" >> settings.gradle
-        
-        # 2. Add dependency hook to DropSauce app architecture
         sed -i '/dependencies {/a \    implementation project(":chika-reader")' app/build.gradle
 
-        # 3. Clean injection matching the exact closing application block using pipe dividers to avoid clash
         TARGET_MANIFEST="app/src/main/AndroidManifest.xml"
         if [ -f "$TARGET_MANIFEST" ]; then
           CHIKA_ACTIVITY_XML='        <activity android:name="com.chakra.comicreader.ui.reader.ChikaReaderActivity" android:exported="false" android:theme="@style/Theme.AppCompat.NoActionBar" />\n    </application>'
@@ -181,4 +152,135 @@ jobs:
       with:
         name: Combined-Release-Signed-APK
         path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+            - name: Inject Chika Self-Contained Reader Activity Engine
+      run: |
+        cat << 'EOF' > chika-reader/src/main/java/com/chakra/comicreader/ui/reader/ChikaReaderActivity.kt
+        package com.chakra.comicreader.ui.reader
+
+        import android.graphics.BitmapFactory
+        import android.os.Bundle
+        import androidx.activity.ComponentActivity
+        import androidx.activity.compose.setContent
+        import androidx.compose.foundation.Canvas
+        import androidx.compose.foundation.gestures.detectTapGestures
+        import androidx.compose.foundation.layout.fillMaxSize
+        import androidx.compose.material3.MaterialTheme
+        import androidx.compose.material3.Surface
+        import androidx.compose.runtime.*
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.asImageBitmap
+        import androidx.compose.ui.graphics.graphicsLayer
+        import androidx.compose.ui.input.pointer.pointerInput
+        import com.chakra.comicreader.data.archive.ComicArchiveFactory
+        import com.chakra.comicreader.detection.MlPanelDetector
+        import com.chakra.comicreader.detection.PanelPipeline
+        import com.chakra.comicreader.detection.Panel
+        import java.io.File
+        import kotlinx.coroutines.Dispatchers
+        import kotlinx.coroutines.withContext
+
+        class ChikaReaderActivity : ComponentActivity() {
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                val chapterPath = intent.getStringExtra("CHAPTER_PATH") ?: ""
+
+                setContent {
+                    MaterialTheme {
+                        Surface(modifier = Modifier.fillMaxSize()) {
+                            var pages by remember { mutableStateOf<List<String>>(emptyList()) }
+                            var currentPageIndex by remember { mutableStateOf(0) }
+                            var currentBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+                            var detectedPanels by remember { mutableStateOf<List<Panel>>(emptyList()) }
+                            var currentPanelIndex by remember { mutableStateOf(-1) }
+                            
+                            val detector = remember { MlPanelDetector(this, "manga_panel_detector_int8.tflite") }
+
+                            // 1. Load Chapter Pages via Archive Decoders
+                            LaunchedEffect(chapterPath) {
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        val archive = ComicArchiveFactory.create(File(chapterPath))
+                                        pages = archive.numberOfItems().map { it.toString() }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            }
+
+                            // 2. Process active page bitmap through Chika ML Panel Predictor
+                            LaunchedEffect(currentPageIndex, pages) {
+                                if (pages.isNotEmpty()) {
+                                    withContext(Dispatchers.IO) {
+                                        try {
+                                            val archive = ComicArchiveFactory.create(File(chapterPath))
+                                            archive.extractSlow(currentPageIndex) { stream ->
+                                                val bytes = stream.readBytes()
+                                                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                                currentBitmap = bitmap
+                                                
+                                                // Feed Bitmap into Chika's Yolo Neural Network model
+                                                val size = com.chakra.comicreader.detection.Size(bitmap.width, bitmap.height)
+                                                val source = com.chakra.comicreader.detection.PanelSource(bitmap)
+                                                detectedPanels = PanelPipeline.process(size, detector.detect(source))
+                                                currentPanelIndex = -1 // Reset zoom layout on page change
+                                            }
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. Render Canvas Viewport with Chika Tracking Coordinate Math
+                            currentBitmap?.let { bitmap ->
+                                val activePanel = if (currentPanelIndex in detectedPanels.indices) detectedPanels[currentPanelIndex] else null
+                                
+                                Canvas(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onTap = {
+                                                    // Move forward to the next panel or shift to next page
+                                                    if (currentPanelIndex < detectedPanels.lastIndex) {
+                                                        currentPanelIndex++
+                                                    } else if (currentPageIndex < pages.lastIndex) {
+                                                        currentPageIndex++
+                                                    } else {
+                                                        finish() // End layout stack execution
+                                                    }
+                                                },
+                                                onLongPress = {
+                                                    // Move backward to previous panel layout segment
+                                                    if (currentPanelIndex > -1) {
+                                                        currentPanelIndex--
+                                                    } else if (currentPageIndex > 0) {
+                                                        currentPageIndex--
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        .graphicsLayer {
+                                            if (activePanel != null) {
+                                                // Apply Chika viewport coordinates zoom configurations to the view canvas matrix
+                                                val scaleX = size.width / activePanel.rect.width
+                                                val scaleY = size.height / activePanel.rect.height
+                                                val finalScale = minOf(scaleX, scaleY).coerceAtMost(3.0f)
+                                                
+                                                this.scaleX = finalScale
+                                                this.scaleY = finalScale
+                                                this.translationX = -activePanel.rect.centerX * finalScale + size.width / 2
+                                                this.translationY = -activePanel.rect.centerY * finalScale + size.height / 2
+                                            }
+                                        }
+                                ) {
+                                    drawImage(image = bitmap.asImageBitmap())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        EOF
         
