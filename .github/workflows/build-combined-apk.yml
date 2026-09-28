@@ -1,7 +1,7 @@
 name: Build Combined Release Signed APK (Deterministic)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows you to manually trigger this build from the Actions tab
 
 jobs:
   build:
@@ -11,27 +11,36 @@ jobs:
     - name: Checkout DropSauce (Base Project)
       uses: actions/checkout@v4
 
-    - name: Clone Chika Repository
+    - name: Clone Chika Repository and Isolate Reader Modules
       run: |
         git clone https://github.com chika-src
         
-        # 1. Create a matching local feature module layout for Chika's true packages
-        mkdir -p chika-reader/src/main/java/com/chakra/comicreader
+        # 1. Initialize clean local module structure inside your fork
+        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/data/archive
+        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/detection
+        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/ui/reader
+        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/ui/theme
         mkdir -p chika-reader/src/main/assets
-        mkdir -p chika-reader/src/main/res
+        mkdir -p chika-reader/src/main/res/font
         
-        # 2. Copy Chika's app layer files into the correct folder tree
-        cp -r chika-src/app/src/main/java/com/chakra/comicreader/* chika-reader/src/main/java/com/chakra/comicreader/ || true
-        cp -r chika-src/app/src/main/assets/* chika-reader/src/main/assets/ || true
-        cp -r chika-src/app/src/main/res/* chika-reader/src/main/res/ || true
+        # 2. Extract AI Panel Tracking Assets & Custom Typography
+        cp chika-src/app/src/main/assets/manga_panel_detector_int8.tflite chika-reader/src/main/assets/
+        cp chika-src/app/src/main/res/font/*.ttf chika-reader/src/main/res/font/
         
-        # 3. Copy Chika's shared KMP common code layer directly into the Java engine
-        cp -r chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/* chika-reader/src/main/java/com/chakra/comicreader/ || true
+        # 3. Pull App-Level UI Screens & Android ML Drivers
+        cp chika-src/app/src/main/java/com/chakra/comicreader/ui/reader/*.kt chika-reader/src/main/java/com/chakra/comicreader/ui/reader/
+        cp chika-src/app/src/main/java/com/chakra/comicreader/ui/theme/*.kt chika-reader/src/main/java/com/chakra/comicreader/ui/theme/
+        cp chika-src/app/src/main/java/com/chakra/comicreader/detection/*.kt chika-reader/src/main/java/com/chakra/comicreader/detection/
+        
+        # 4. Pull Common KMP Math & Logic Engines
+        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/detection/*.kt chika-reader/src/main/java/com/chakra/comicreader/detection/
+        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/ui/reader/*.kt chika-reader/src/main/java/com/chakra/comicreader/ui/reader/
+        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/data/archive/ComicArchive.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
+        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/data/archive/ComicFormatDetector.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
 
     - name: Inject Chika Reader Activity Wrapper
       run: |
-        # Creates a bridge Activity class inside the true com.chakra.comicreader package space
-        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/ui/reader
+        # Creates a traditional Android Activity entry bridge inside Chika's package space
         cat << 'EOF' > chika-reader/src/main/java/com/chakra/comicreader/ui/reader/ChikaReaderActivity.kt
         package com.chakra.comicreader.ui.reader
 
@@ -62,12 +71,14 @@ jobs:
 
     - name: Inject Chika Module into Project Structural Files
       run: |
+        # Append the new isolated chika module to the global layout manager
         if [ -f settings.gradle.kts ]; then
           echo 'include(":chika-reader")' >> settings.gradle.kts
         else
           echo "include ':chika-reader'" >> settings.gradle
         fi
         
+        # Make DropSauce depend directly on our custom chika viewer module
         if [ -f app/build.gradle.kts ]; then
           sed -i '/dependencies {/a \    implementation(project(":chika-reader"))' app/build.gradle.kts
         else
@@ -83,6 +94,7 @@ jobs:
 
     - name: Dynamically Generate Cloud Keystore
       run: |
+        # Generates a persistent signature matrix using your private passphrase seed
         keytool -genkey -v \
           -keystore release.keystore \
           -alias dropchika-key \
@@ -93,6 +105,7 @@ jobs:
           -keypass "${{ secrets.APP_SIGNING_PASSPHRASE }}" \
           -dname "CN=DropChika, O=Android, C=US"
           
+        # Encode the signature into environment space for the code-signer
         echo "KEYSTORE_BASE64=$(base64 -w 0 release.keystore)" >> $GITHUB_ENV
 
     - name: Grant Execute Permission for Gradle
