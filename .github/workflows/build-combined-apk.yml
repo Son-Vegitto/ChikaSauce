@@ -1,7 +1,7 @@
 name: Build Combined Release Signed APK (Deterministic)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Restores the manual "Run workflow" trigger button
 
 jobs:
   build:
@@ -96,8 +96,129 @@ jobs:
 
     - name: Inject Chika Self-Contained Reader Activity Engine
       run: |
-        # Handled in Part 2 text array block
-        echo "Injecting target activity payload on next automation block"
+        cat << 'EOF' > chika-reader/src/main/java/com/chakra/comicreader/ui/reader/ChikaReaderActivity.kt
+        package com.chakra.comicreader.ui.reader
+
+        import android.graphics.BitmapFactory
+        import android.os.Bundle
+        import androidx.activity.ComponentActivity
+        import androidx.activity.compose.setContent
+        import androidx.compose.foundation.Canvas
+        import androidx.compose.foundation.gestures.detectTapGestures
+        import androidx.compose.foundation.layout.fillMaxSize
+        import androidx.compose.material3.MaterialTheme
+        import androidx.compose.material3.Surface
+        import androidx.compose.runtime.*
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.asImageBitmap
+        import androidx.compose.ui.graphics.graphicsLayer
+        import androidx.compose.ui.input.pointer.pointerInput
+        import com.chakra.comicreader.data.archive.ComicArchiveFactory
+        import com.chakra.comicreader.detection.MlPanelDetector
+        import com.chakra.comicreader.detection.PanelPipeline
+        import com.chakra.comicreader.detection.Panel
+        import java.io.File
+        import kotlinx.coroutines.Dispatchers
+        import kotlinx.coroutines.withContext
+
+        class ChikaReaderActivity : ComponentActivity() {
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                val chapterPath = intent.getStringExtra("CHAPTER_PATH") ?: ""
+
+                setContent {
+                    MaterialTheme {
+                        Surface(modifier = Modifier.fillMaxSize()) {
+                            var pages by remember { mutableStateOf<List<String>>(emptyList()) }
+                            var currentPageIndex by remember { mutableStateOf(0) }
+                            var currentBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+                            var detectedPanels by remember { mutableStateOf<List<Panel>>(emptyList()) }
+                            var currentPanelIndex by remember { mutableStateOf(-1) }
+                            
+                            val detector = remember { MlPanelDetector(this, "manga_panel_detector_int8.tflite") }
+
+                            LaunchedEffect(chapterPath) {
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        val archive = ComicArchiveFactory.create(File(chapterPath))
+                                        pages = archive.numberOfItems().map { it.toString() }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            }
+
+                            LaunchedEffect(currentPageIndex, pages) {
+                                if (pages.isNotEmpty()) {
+                                    withContext(Dispatchers.IO) {
+                                        try {
+                                            val archive = ComicArchiveFactory.create(File(chapterPath))
+                                            archive.extractSlow(currentPageIndex) { stream ->
+                                                val bytes = stream.readBytes()
+                                                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                                currentBitmap = bitmap
+                                                
+                                                val size = com.chakra.comicreader.detection.Size(bitmap.width, bitmap.height)
+                                                val source = com.chakra.comicreader.detection.PanelSource(bitmap)
+                                                detectedPanels = PanelPipeline.process(size, detector.detect(source))
+                                                currentPanelIndex = -1
+                                            }
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
+                                }
+                            }
+
+                            currentBitmap?.let { bitmap ->
+                                val activePanel = if (currentPanelIndex in detectedPanels.indices) detectedPanels[currentPanelIndex] else null
+                                
+                                Canvas(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onTap = {
+                                                    if (currentPanelIndex < detectedPanels.lastIndex) {
+                                                                                                        if (currentPanelIndex < detectedPanels.lastIndex) {
+                                                        currentPanelIndex++
+                                                    } else if (currentPageIndex < pages.lastIndex) {
+                                                        currentPageIndex++
+                                                    } else {
+                                                        finish()
+                                                    }
+                                                },
+                                                onLongPress = {
+                                                    if (currentPanelIndex > -1) {
+                                                        currentPanelIndex--
+                                                    } else if (currentPageIndex > 0) {
+                                                        currentPageIndex--
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        .graphicsLayer {
+                                            if (activePanel != null) {
+                                                val scaleX = size.width / activePanel.rect.width
+                                                val scaleY = size.height / activePanel.rect.height
+                                                val finalScale = minOf(scaleX, scaleY).coerceAtMost(3.0f)
+                                                
+                                                this.scaleX = finalScale
+                                                this.scaleY = finalScale
+                                                this.translationX = -activePanel.rect.centerX * finalScale + size.width / 2
+                                                this.translationY = -activePanel.rect.centerY * finalScale + size.height / 2
+                                            }
+                                        }
+                                ) {
+                                    drawImage(image = bitmap.asImageBitmap())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        EOF
 
     - name: Inject Chika Module and Register Android Manifest
       run: |
@@ -152,135 +273,4 @@ jobs:
       with:
         name: Combined-Release-Signed-APK
         path: ${{ steps.sign_app.outputs.signedReleaseFile }}
-            - name: Inject Chika Self-Contained Reader Activity Engine
-      run: |
-        cat << 'EOF' > chika-reader/src/main/java/com/chakra/comicreader/ui/reader/ChikaReaderActivity.kt
-        package com.chakra.comicreader.ui.reader
-
-        import android.graphics.BitmapFactory
-        import android.os.Bundle
-        import androidx.activity.ComponentActivity
-        import androidx.activity.compose.setContent
-        import androidx.compose.foundation.Canvas
-        import androidx.compose.foundation.gestures.detectTapGestures
-        import androidx.compose.foundation.layout.fillMaxSize
-        import androidx.compose.material3.MaterialTheme
-        import androidx.compose.material3.Surface
-        import androidx.compose.runtime.*
-        import androidx.compose.ui.Modifier
-        import androidx.compose.ui.graphics.asImageBitmap
-        import androidx.compose.ui.graphics.graphicsLayer
-        import androidx.compose.ui.input.pointer.pointerInput
-        import com.chakra.comicreader.data.archive.ComicArchiveFactory
-        import com.chakra.comicreader.detection.MlPanelDetector
-        import com.chakra.comicreader.detection.PanelPipeline
-        import com.chakra.comicreader.detection.Panel
-        import java.io.File
-        import kotlinx.coroutines.Dispatchers
-        import kotlinx.coroutines.withContext
-
-        class ChikaReaderActivity : ComponentActivity() {
-            override fun onCreate(savedInstanceState: Bundle?) {
-                super.onCreate(savedInstanceState)
-                val chapterPath = intent.getStringExtra("CHAPTER_PATH") ?: ""
-
-                setContent {
-                    MaterialTheme {
-                        Surface(modifier = Modifier.fillMaxSize()) {
-                            var pages by remember { mutableStateOf<List<String>>(emptyList()) }
-                            var currentPageIndex by remember { mutableStateOf(0) }
-                            var currentBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
-                            var detectedPanels by remember { mutableStateOf<List<Panel>>(emptyList()) }
-                            var currentPanelIndex by remember { mutableStateOf(-1) }
-                            
-                            val detector = remember { MlPanelDetector(this, "manga_panel_detector_int8.tflite") }
-
-                            // 1. Load Chapter Pages via Archive Decoders
-                            LaunchedEffect(chapterPath) {
-                                withContext(Dispatchers.IO) {
-                                    try {
-                                        val archive = ComicArchiveFactory.create(File(chapterPath))
-                                        pages = archive.numberOfItems().map { it.toString() }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }
-                            }
-
-                            // 2. Process active page bitmap through Chika ML Panel Predictor
-                            LaunchedEffect(currentPageIndex, pages) {
-                                if (pages.isNotEmpty()) {
-                                    withContext(Dispatchers.IO) {
-                                        try {
-                                            val archive = ComicArchiveFactory.create(File(chapterPath))
-                                            archive.extractSlow(currentPageIndex) { stream ->
-                                                val bytes = stream.readBytes()
-                                                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                                                currentBitmap = bitmap
-                                                
-                                                // Feed Bitmap into Chika's Yolo Neural Network model
-                                                val size = com.chakra.comicreader.detection.Size(bitmap.width, bitmap.height)
-                                                val source = com.chakra.comicreader.detection.PanelSource(bitmap)
-                                                detectedPanels = PanelPipeline.process(size, detector.detect(source))
-                                                currentPanelIndex = -1 // Reset zoom layout on page change
-                                            }
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 3. Render Canvas Viewport with Chika Tracking Coordinate Math
-                            currentBitmap?.let { bitmap ->
-                                val activePanel = if (currentPanelIndex in detectedPanels.indices) detectedPanels[currentPanelIndex] else null
-                                
-                                Canvas(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .pointerInput(Unit) {
-                                            detectTapGestures(
-                                                onTap = {
-                                                    // Move forward to the next panel or shift to next page
-                                                    if (currentPanelIndex < detectedPanels.lastIndex) {
-                                                        currentPanelIndex++
-                                                    } else if (currentPageIndex < pages.lastIndex) {
-                                                        currentPageIndex++
-                                                    } else {
-                                                        finish() // End layout stack execution
-                                                    }
-                                                },
-                                                onLongPress = {
-                                                    // Move backward to previous panel layout segment
-                                                    if (currentPanelIndex > -1) {
-                                                        currentPanelIndex--
-                                                    } else if (currentPageIndex > 0) {
-                                                        currentPageIndex--
-                                                    }
-                                                }
-                                            )
-                                        }
-                                        .graphicsLayer {
-                                            if (activePanel != null) {
-                                                // Apply Chika viewport coordinates zoom configurations to the view canvas matrix
-                                                val scaleX = size.width / activePanel.rect.width
-                                                val scaleY = size.height / activePanel.rect.height
-                                                val finalScale = minOf(scaleX, scaleY).coerceAtMost(3.0f)
-                                                
-                                                this.scaleX = finalScale
-                                                this.scaleY = finalScale
-                                                this.translationX = -activePanel.rect.centerX * finalScale + size.width / 2
-                                                this.translationY = -activePanel.rect.centerY * finalScale + size.height / 2
-                                            }
-                                        }
-                                ) {
-                                    drawImage(image = bitmap.asImageBitmap())
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        EOF
         
