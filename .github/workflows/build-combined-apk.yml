@@ -13,7 +13,7 @@ jobs:
 
     - name: Clone Chika Repository and Isolate Reader Modules
       run: |
-        git clone https://github.com chika-src
+        git clone https://github.com/batunii/chika chika-src
         
         # 1. Initialize exact module directory layouts
         mkdir -p chika-reader/src/main/java/com/chakra/comicreader/data/archive
