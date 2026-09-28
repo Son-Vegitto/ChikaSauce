@@ -1,7 +1,7 @@
 name: Build Combined Release Signed APK (Deterministic)
 
 on:
-  workflow_dispatch: # Allows you to manually trigger this build from the Actions tab
+  workflow_dispatch: # Trigger manually via the GitHub Actions tab
 
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
       run: |
         git clone https://github.com chika-src
         
-        # 1. Initialize clean local module structure inside your fork
+        # 1. Initialize exact module directory layouts
         mkdir -p chika-reader/src/main/java/com/chakra/comicreader/data/archive
         mkdir -p chika-reader/src/main/java/com/chakra/comicreader/detection
         mkdir -p chika-reader/src/main/java/com/chakra/comicreader/ui/reader
@@ -40,7 +40,7 @@ jobs:
 
     - name: Inject Chika Reader Activity Wrapper
       run: |
-        # Creates a traditional Android Activity entry bridge inside Chika's package space
+        # Creates a traditional Android Activity bridge interface inside Chika's package space
         cat << 'EOF' > chika-reader/src/main/java/com/chakra/comicreader/ui/reader/ChikaReaderActivity.kt
         package com.chakra.comicreader.ui.reader
 
@@ -69,20 +69,19 @@ jobs:
         }
         EOF
 
-    - name: Inject Chika Module into Project Structural Files
+    - name: Inject Chika Module and Register Android Manifest
       run: |
-        # Append the new isolated chika module to the global layout manager
-        if [ -f settings.gradle.kts ]; then
-          echo 'include(":chika-reader")' >> settings.gradle.kts
-        else
-          echo "include ':chika-reader'" >> settings.gradle
-        fi
+        # 1. Append the new isolated chika module to the global settings file using Groovy syntax
+        echo "include ':chika-reader'" >> settings.gradle
         
-        # Make DropSauce depend directly on our custom chika viewer module
-        if [ -f app/build.gradle.kts ]; then
-          sed -i '/dependencies {/a \    implementation(project(":chika-reader"))' app/build.gradle.kts
-        else
-          sed -i '/dependencies {/a \    implementation project(":chika-reader")' app/build.gradle
+        # 2. Add the dependency line to DropSauce's main app build file
+        sed -i '/dependencies {/a \    implementation project(":chika-reader")' app/build.gradle
+
+        # 3. Register ChikaReaderActivity inside DropSauce's true Manifest file path
+        TARGET_MANIFEST="app/src/main/AndroidManifest.xml"
+        if [ -f "$TARGET_MANIFEST" ]; then
+          CHIKA_ACTIVITY_XML='        <activity android:name="com.chakra.comicreader.ui.reader.ChikaReaderActivity" android:exported="false" android:theme="@style/Theme.AppCompat.NoActionBar" />'
+          sed -i '/<application/a '"$CHIKA_ACTIVITY_XML"'' "$TARGET_MANIFEST"
         fi
 
     - name: Set up JDK 21
@@ -94,7 +93,7 @@ jobs:
 
     - name: Dynamically Generate Cloud Keystore
       run: |
-        # Generates a persistent signature matrix using your private passphrase seed
+        # Generates a persistent signature matrix using your private seed secret passphrase
         keytool -genkey -v \
           -keystore release.keystore \
           -alias dropchika-key \
@@ -105,7 +104,6 @@ jobs:
           -keypass "${{ secrets.APP_SIGNING_PASSPHRASE }}" \
           -dname "CN=DropChika, O=Android, C=US"
           
-        # Encode the signature into environment space for the code-signer
         echo "KEYSTORE_BASE64=$(base64 -w 0 release.keystore)" >> $GITHUB_ENV
 
     - name: Grant Execute Permission for Gradle
