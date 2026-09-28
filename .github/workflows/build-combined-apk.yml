@@ -1,7 +1,7 @@
 name: Build Combined Release Signed APK (Deterministic)
 
 on:
-  workflow_dispatch: # Allows you to manually trigger this build from the Actions tab
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,32 +15,23 @@ jobs:
       run: |
         git clone https://github.com/batunii/chika chika-src
         
-        # 1. Initialize exact module directory layouts
-        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/data/archive
-        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/detection
-        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/ui/reader
-        mkdir -p chika-reader/src/main/java/com/chakra/comicreader/ui/theme
+        # 1. Initialize complete module directory layout
+        mkdir -p chika-reader/src/main/java/com/chakra/comicreader
         mkdir -p chika-reader/src/main/assets
-        mkdir -p chika-reader/src/main/res/font
+        mkdir -p chika-reader/src/main/res
         
         # 2. Extract AI Panel Tracking Assets & Custom Typography
         cp chika-src/app/src/main/assets/manga_panel_detector_int8.tflite chika-reader/src/main/assets/
-        cp chika-src/app/src/main/res/font/*.ttf chika-reader/src/main/res/font/
+        cp -r chika-src/app/src/main/res/* chika-reader/src/main/res/ || true
         
-        # 3. Pull App-Level UI Screens & Android ML Drivers
-        cp chika-src/app/src/main/java/com/chakra/comicreader/ui/reader/*.kt chika-reader/src/main/java/com/chakra/comicreader/ui/reader/
-        cp chika-src/app/src/main/java/com/chakra/comicreader/ui/theme/*.kt chika-reader/src/main/java/com/chakra/comicreader/ui/theme/
-        cp chika-src/app/src/main/java/com/chakra/comicreader/detection/*.kt chika-reader/src/main/java/com/chakra/comicreader/detection/
+        # 3. Pull ALL Chika App Source Files recursively to avoid missing references
+        cp -r chika-src/app/src/main/java/com/chakra/comicreader/* chika-reader/src/main/java/com/chakra/comicreader/ || true
         
-        # 4. Pull Common KMP Math & Logic Engines
-        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/detection/*.kt chika-reader/src/main/java/com/chakra/comicreader/detection/
-        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/ui/reader/*.kt chika-reader/src/main/java/com/chakra/comicreader/ui/reader/
-        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/data/archive/ComicArchive.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
-        cp chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/data/archive/ComicFormatDetector.kt chika-reader/src/main/java/com/chakra/comicreader/data/archive/
+        # 4. Pull ALL Shared Common Math & Logic Engines recursively
+        cp -r chika-src/shared/src/commonMain/kotlin/com/chakra/comicreader/* chika-reader/src/main/java/com/chakra/comicreader/ || true
 
     - name: Create Chika Reader Module Build Configurations
       run: |
-        # Generates a valid Android Library build configuration file matching DropSauce's Kotlin 2.0 traits
         cat << 'EOF' > chika-reader/build.gradle
         plugins {
             id 'com.android.library'
@@ -72,18 +63,21 @@ jobs:
         }
 
         dependencies {
-            // Core UI and Lifecycle layers required by Chika's Compose setup
             implementation 'androidx.core:core-ktx:1.12.0'
             implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
             implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0'
+            implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.7.0'
             implementation 'androidx.activity:activity-compose:1.8.2'
             
-            // Jetpack Compose Framework Architecture
+            // Jetpack Compose Architecture
             implementation platform('androidx.compose:compose-bom:2024.02.00')
             implementation 'androidx.compose.ui:ui'
             implementation 'androidx.compose.ui:ui-graphics'
             implementation 'androidx.compose.ui:ui-tooling-preview'
             implementation 'androidx.compose.material3:material3'
+            
+            // Material Extended Icons used by Chika UI
+            implementation 'androidx.compose.material:material-icons-extended'
             
             // On-device machine learning processing
             implementation 'org.tensorflow:tensorflow-lite:2.14.0'
@@ -93,7 +87,7 @@ jobs:
 
     - name: Inject Chika Reader Activity Wrapper
       run: |
-        # Creates a traditional Android Activity entry bridge inside Chika's package space
+        # Creates a traditional Android Activity entry bridge that cleanly matches Chika's inner parameters
         cat << 'EOF' > chika-reader/src/main/java/com/chakra/comicreader/ui/reader/ChikaReaderActivity.kt
         package com.chakra.comicreader.ui.reader
 
@@ -111,10 +105,10 @@ jobs:
                 setContent {
                     ChikaTheme {
                         val readerViewModel: ReaderViewModel = viewModel()
+                        // Match Chika's exact constructor requirements
                         ReaderScreen(
                             viewModel = readerViewModel,
-                            initialFilePath = chapterPath,
-                            onBackPressed = { finish() }
+                            onBack = { finish() }
                         )
                     }
                 }
@@ -124,17 +118,17 @@ jobs:
 
     - name: Inject Chika Module and Register Android Manifest
       run: |
-        # 1. Append the new isolated chika module to the global settings file using Groovy syntax
+        # 1. Append module using clean strings
         echo "include ':chika-reader'" >> settings.gradle
         
-        # 2. Add the dependency line to DropSauce's main app build file
+        # 2. Add dependency hook to DropSauce app architecture
         sed -i '/dependencies {/a \    implementation project(":chika-reader")' app/build.gradle
 
-        # 3. Register ChikaReaderActivity inside DropSauce's true Manifest file path
+        # 3. Clean injection matching the exact closing application block of your manifest file tree
         TARGET_MANIFEST="app/src/main/AndroidManifest.xml"
         if [ -f "$TARGET_MANIFEST" ]; then
-          CHIKA_ACTIVITY_XML='        <activity android:name="com.chakra.comicreader.ui.reader.ChikaReaderActivity" android:exported="false" android:theme="@style/Theme.AppCompat.NoActionBar" />'
-          sed -i '/<application/a '"$CHIKA_ACTIVITY_XML"'' "$TARGET_MANIFEST"
+          CHIKA_ACTIVITY_XML='        <activity android:name="com.chakra.comicreader.ui.reader.ChikaReaderActivity" android:exported="false" android:theme="@style/Theme.AppCompat.NoActionBar" />\n    <\/application>'
+          sed -i "s/<\/application>/$CHIKA_ACTIVITY_XML/g" "$TARGET_MANIFEST"
         fi
 
     - name: Set up JDK 21
@@ -146,7 +140,6 @@ jobs:
 
     - name: Dynamically Generate Cloud Keystore
       run: |
-        # Generates a persistent signature matrix using your private passphrase seed
         keytool -genkey -v \
           -keystore release.keystore \
           -alias dropchika-key \
@@ -157,7 +150,6 @@ jobs:
           -keypass "${{ secrets.APP_SIGNING_PASSPHRASE }}" \
           -dname "CN=DropChika, O=Android, C=US"
           
-        # Encode the signature into environment space for the code-signer
         echo "KEYSTORE_BASE64=$(base64 -w 0 release.keystore)" >> $GITHUB_ENV
 
     - name: Grant Execute Permission for Gradle
